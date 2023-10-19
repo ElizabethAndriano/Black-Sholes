@@ -1,6 +1,6 @@
 yfinance
 datetime
-dateutil.relativedelta
+dateutil
 plotly.express
 streamlit
 streamlit_plotly_events
