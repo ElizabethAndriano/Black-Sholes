@@ -1,6 +1,5 @@
 yfinance
 datetime
-dateutil
 plotly.express
 streamlit
 streamlit_plotly_events
