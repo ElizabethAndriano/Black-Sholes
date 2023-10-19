@@ -3,6 +3,7 @@ import datetime as dt # ventana de tiempo
 from dateutil.relativedelta import relativedelta
 import plotly.express as px # graficos
 import streamlit as st
+from scipy import stats
 from streamlit_plotly_events import plotly_events
 import numpy as np
 import pandas as pd
@@ -17,7 +18,7 @@ def getData(optn,start,end):
              'Netflix': 'NFLX',
              'Apple': 'AAPL',
              'Facebook': 'META',
-             'P&G': 'PG'}
+             'TNX': '^TNX'}
 
     data = yf.download(stake[optn],start=start,end=end,interval='1d') 
     return pd.DataFrame(data)
@@ -60,6 +61,33 @@ def MBG(df, tiempo, k):
     S= np.array(S)
     return S
 
+def modeloBlackSholes(precio_accion,precio_ejercicio,tasa,tiempo,volatilidad):
+    '''
+    Inputs:
+    precio_accion (float): Precio actual de la acción
+    precio_ejercicio (float): Precio de ejercicio de la acción
+    tasa (float): Tasa de interés libre de riesgo (anualizada)
+    tiempo (float): Tiempo hasta la expiración de la opción (en años)
+    volatilidad (float): Volatilidad del precio de la acción (anualizada)
+
+    Outputs:
+    call: Precio de la opción de compra
+    put: Precio de la opción de venta
+    '''
+
+    t = {'1 mes': 1/12, '3 meses': 3/12,
+         '6 meses': 6/12, '1 año': 1}
+    
+    # Cálculo de d1 y d2
+    d1 = (np.log(precio_accion / precio_ejercicio) + (tasa + volatilidad**2 / 2) * t[tiempo]) / (volatilidad * np.sqrt(t[tiempo]))
+    d2 = d1 - volatilidad * np.sqrt(t[tiempo])
+
+    # Cálculo de los precios de opción de compra y la opción de venta
+    call = stats.norm.cdf(d1) * precio_accion  - stats.norm.cdf(d2) * precio_ejercicio * np.exp(-tasa * t[tiempo])
+    put = stats.norm.cdf(-d2) * precio_ejercicio * np.exp(-tasa * t[tiempo]) - stats.norm.cdf(-d1) * precio_accion
+
+    return call,put
+
 # Página
 
 st.set_page_config(
@@ -71,7 +99,7 @@ st.title('Opciones Europeas')
 
 a1,a2,a3,a4,a5 = st.columns([2,1,1,2,2])
 
-stake = a1.selectbox('Activo subyacente',('Facebook','Amazon','Apple','Netflix','Google','P&G')) # Confirmar que no tengan dividendos
+stake = a1.selectbox('Activo subyacente',('Facebook','Amazon','Apple','Netflix','Google')) # Confirmar que no tengan dividendos
 start_date = a2.date_input('Fecha de inicio',dt.date(2023, 1, 1))
 end_date = a3.date_input('Fecha de fin',max_value=dt.date.today())
 expiration_date = a4.selectbox('Fecha de vencimiento',('1 mes','3 meses','6 meses','1 año'),
@@ -134,6 +162,32 @@ fig_proy = px.line(predict,x=predict.index,y='Adj Close',color='Tipo',
                    color_discrete_sequence=px.colors.qualitative.Plotly)
 plotly_events(fig_proy)
 
+st.header('Modelo Black-Sholes')
 
 valor_medio = df['Rendimiento'].mean()
-volatilidad = df['Rendimiento'].std()
+sigma = df['Rendimiento'].std()
+volatilidad = sigma * np.sqrt(252)
+
+interes = getData('TNX',start_date,end_date)['Adj Close'] / 100
+
+col1, col2 = st.columns([1,2])
+
+with col1.form('black-sholes'):
+    S = st.number_input('Precio de la acción', value = df['Adj Close'][-1])
+    K = st.number_input('Precio de ejercicio', min_value=1)
+    vol = st.number_input('Volatilidad', value = volatilidad)
+    tasa = st.number_input('Tasa de interés',value = interes[-1],format='%f')
+
+    submitted = st.form_submit_button("Submit")
+    if submitted:
+        compra, venta = modeloBlackSholes(S,K,tasa,expiration_date,vol)
+
+        with col2:
+            st.write(f'Precio de la acción: {S}')
+            st.write(f'Precio de ejercicio: {K}')
+            st.write(f'Volatilidad {round(vol * 100,2)} %')
+            st.write(f'Tasa de interés libre de riesgo: {tasa}')
+            st.write(f'Tiempo hasta la fecha de ejercicio: {expiration_date}')
+
+            st.info(f'Precio de la opción de call: {round(compra,2)}')
+            st.info(f'Precio de la opción de put: {round(venta,2)}')
