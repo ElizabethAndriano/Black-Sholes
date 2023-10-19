@@ -1,0 +1,8 @@
+yfinance
+datetime
+dateutil.relativedelta
+plotly.express
+streamlit
+streamlit_plotly_events
+numpy
+pandas
